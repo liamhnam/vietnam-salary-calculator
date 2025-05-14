@@ -34,6 +34,7 @@ interface TaxCalculationResult {
   unionFee: number
   taxableIncome: number
   personalIncomeTax: number
+  totalIncome?: number
 }
 
 /**
@@ -45,12 +46,30 @@ export function calculateGrossToNet(
   region: string,
   hasUnion = false,
   unionRate = 1,
+  customBHXH = false,
+  bhxhBaseAmount = 0,
+  hasAllowance = false,
+  allowanceAmount = 0,
+  hasOvertime = false,
+  overtimeAmount = 0,
 ): TaxCalculationResult {
+  // Calculate total income including allowances and overtime
+  const totalIncome = grossSalary + (hasAllowance ? allowanceAmount : 0) + (hasOvertime ? overtimeAmount : 0)
+
   // Calculate insurance contributions
   const maxSalaryForInsurance = MAX_SALARY_FOR_INSURANCE[region] || MAX_SALARY_FOR_INSURANCE["1"]
   const salaryForInsurance = Math.min(grossSalary, maxSalaryForInsurance)
 
-  const socialInsurance = salaryForInsurance * SOCIAL_INSURANCE_RATE
+  // Calculate BHXH based on custom settings or default rate
+  let socialInsurance = 0
+  if (customBHXH && bhxhBaseAmount > 0) {
+    // Tính BHXH là 8% của số tiền cố định do người dùng nhập
+    socialInsurance = bhxhBaseAmount * SOCIAL_INSURANCE_RATE
+  } else {
+    // Tính BHXH mặc định là 8% của lương gross (tối đa theo vùng)
+    socialInsurance = salaryForInsurance * SOCIAL_INSURANCE_RATE
+  }
+
   const healthInsurance = salaryForInsurance * HEALTH_INSURANCE_RATE
   const unemploymentInsurance = salaryForInsurance * UNEMPLOYMENT_INSURANCE_RATE
   const unionFee = hasUnion ? salaryForInsurance * (unionRate / 100) : 0
@@ -58,13 +77,13 @@ export function calculateGrossToNet(
   // Calculate taxable income
   const totalDeductions = socialInsurance + healthInsurance + unemploymentInsurance + unionFee
   const totalAllowances = PERSONAL_DEDUCTION + dependents * DEPENDENT_DEDUCTION
-  const taxableIncome = Math.max(0, grossSalary - totalDeductions - totalAllowances)
+  const taxableIncome = Math.max(0, totalIncome - totalDeductions - totalAllowances)
 
   // Calculate personal income tax
   const personalIncomeTax = calculateProgressiveTax(taxableIncome)
 
   // Calculate net salary
-  const netSalary = grossSalary - totalDeductions - personalIncomeTax
+  const netSalary = totalIncome - totalDeductions - personalIncomeTax
 
   return {
     grossSalary,
@@ -75,6 +94,7 @@ export function calculateGrossToNet(
     unionFee,
     taxableIncome,
     personalIncomeTax,
+    totalIncome,
   }
 }
 
@@ -87,17 +107,38 @@ export function calculateNetToGross(
   region: string,
   hasUnion = false,
   unionRate = 1,
+  customBHXH = false,
+  bhxhBaseAmount = 0,
+  hasAllowance = false,
+  allowanceAmount = 0,
+  hasOvertime = false,
+  overtimeAmount = 0,
 ): TaxCalculationResult {
+  // Adjust target net salary to account for allowances and overtime
+  const adjustedTargetNet = targetNetSalary - (hasAllowance ? allowanceAmount : 0) - (hasOvertime ? overtimeAmount : 0)
+
   // Use binary search to find the gross salary that results in the target net salary
-  let low = targetNetSalary
-  let high = targetNetSalary * 2 // Initial upper bound
+  let low = adjustedTargetNet
+  let high = adjustedTargetNet * 2 // Initial upper bound
   let grossSalary = 0
   let result: TaxCalculationResult | null = null
 
   // Binary search with precision of 1000 VND
   while (high - low > 1000) {
     grossSalary = Math.floor((low + high) / 2)
-    const calculationResult = calculateGrossToNet(grossSalary, dependents, region, hasUnion, unionRate)
+    const calculationResult = calculateGrossToNet(
+      grossSalary,
+      dependents,
+      region,
+      hasUnion,
+      unionRate,
+      customBHXH,
+      bhxhBaseAmount,
+      hasAllowance,
+      allowanceAmount,
+      hasOvertime,
+      overtimeAmount,
+    )
 
     if (calculationResult.netSalary > targetNetSalary) {
       high = grossSalary
@@ -109,7 +150,19 @@ export function calculateNetToGross(
 
   // If we didn't find a result (unlikely), calculate with the final gross salary
   if (!result) {
-    result = calculateGrossToNet(grossSalary, dependents, region, hasUnion, unionRate)
+    result = calculateGrossToNet(
+      grossSalary,
+      dependents,
+      region,
+      hasUnion,
+      unionRate,
+      customBHXH,
+      bhxhBaseAmount,
+      hasAllowance,
+      allowanceAmount,
+      hasOvertime,
+      overtimeAmount,
+    )
   }
 
   // Adjust the result to match the target net salary exactly

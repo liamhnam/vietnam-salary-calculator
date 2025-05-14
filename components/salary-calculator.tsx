@@ -22,24 +22,108 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { calculateGrossToNet, calculateNetToGross } from "@/lib/tax-calculator"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatNumber } from "@/lib/utils"
 
 export function SalaryCalculator() {
   const { toast } = useToast()
   const [salaryType, setSalaryType] = useState<"gross" | "net">("gross")
   const [salary, setSalary] = useState<number>(30000000)
+  const [salaryDisplay, setSalaryDisplay] = useState<string>("30,000,000")
   const [dependents, setDependents] = useState<number>(0)
   const [region, setRegion] = useState<string>("1")
   const [hasUnion, setHasUnion] = useState<boolean>(false)
   const [unionRate, setUnionRate] = useState<number>(1)
-  const [results, setResults] = useState(() => calculateGrossToNet(30000000, dependents, region, false, 1))
+
+  // Thêm các state mới
+  const [customBHXH, setCustomBHXH] = useState<boolean>(false)
+  const [bhxhBaseAmount, setBHXHBaseAmount] = useState<number>(0)
+  const [bhxhBaseAmountDisplay, setBHXHBaseAmountDisplay] = useState<string>("0")
+  const [hasAllowance, setHasAllowance] = useState<boolean>(false)
+  const [allowanceAmount, setAllowanceAmount] = useState<number>(0)
+  const [allowanceAmountDisplay, setAllowanceAmountDisplay] = useState<string>("0")
+  const [hasOvertime, setHasOvertime] = useState<boolean>(false)
+  const [overtimeAmount, setOvertimeAmount] = useState<number>(0)
+  const [overtimeAmountDisplay, setOvertimeAmountDisplay] = useState<string>("0")
+
+  const [results, setResults] = useState(() =>
+    calculateGrossToNet(
+      30000000,
+      dependents,
+      region,
+      hasUnion,
+      unionRate,
+      customBHXH,
+      bhxhBaseAmount,
+      hasAllowance,
+      allowanceAmount,
+      hasOvertime,
+      overtimeAmount,
+    ),
+  )
   const [showResults, setShowResults] = useState<boolean>(false)
+
+  // Xử lý định dạng số có dấu phẩy ngàn
+  const handleSalaryChange = (value: string) => {
+    const cleanValue = value.replace(/[^\d]/g, "")
+    const numberValue = cleanValue ? Number.parseInt(cleanValue, 10) : 0
+    setSalary(numberValue)
+    setSalaryDisplay(formatNumber(numberValue))
+  }
+
+  const handleBHXHBaseAmountChange = (value: string) => {
+    const cleanValue = value.replace(/[^\d]/g, "")
+    const numberValue = cleanValue ? Number.parseInt(cleanValue, 10) : 0
+    setBHXHBaseAmount(numberValue)
+    setBHXHBaseAmountDisplay(formatNumber(numberValue))
+  }
+
+  const handleAllowanceAmountChange = (value: string) => {
+    const cleanValue = value.replace(/[^\d]/g, "")
+    const numberValue = cleanValue ? Number.parseInt(cleanValue, 10) : 0
+    setAllowanceAmount(numberValue)
+    setAllowanceAmountDisplay(formatNumber(numberValue))
+  }
+
+  const handleOvertimeAmountChange = (value: string) => {
+    const cleanValue = value.replace(/[^\d]/g, "")
+    const numberValue = cleanValue ? Number.parseInt(cleanValue, 10) : 0
+    setOvertimeAmount(numberValue)
+    setOvertimeAmountDisplay(formatNumber(numberValue))
+  }
 
   const handleCalculate = () => {
     if (salaryType === "gross") {
-      setResults(calculateGrossToNet(salary, dependents, region, hasUnion, unionRate))
+      setResults(
+        calculateGrossToNet(
+          salary,
+          dependents,
+          region,
+          hasUnion,
+          unionRate,
+          customBHXH,
+          bhxhBaseAmount,
+          hasAllowance,
+          allowanceAmount,
+          hasOvertime,
+          overtimeAmount,
+        ),
+      )
     } else {
-      setResults(calculateNetToGross(salary, dependents, region, hasUnion, unionRate))
+      setResults(
+        calculateNetToGross(
+          salary,
+          dependents,
+          region,
+          hasUnion,
+          unionRate,
+          customBHXH,
+          bhxhBaseAmount,
+          hasAllowance,
+          allowanceAmount,
+          hasOvertime,
+          overtimeAmount,
+        ),
+      )
     }
     setShowResults(true)
   }
@@ -48,10 +132,12 @@ export function SalaryCalculator() {
     const text = `
 Kết quả tính lương:
 Lương ${salaryType === "gross" ? "gross" : "net"}: ${formatCurrency(salary)}
+${hasAllowance ? `Phụ cấp: ${formatCurrency(allowanceAmount)}` : ""}
+${hasOvertime ? `Tiền làm thêm giờ: ${formatCurrency(overtimeAmount)}` : ""}
 Lương ${salaryType === "gross" ? "net" : "gross"}: ${formatCurrency(salaryType === "gross" ? results.netSalary : results.grossSalary)}
 
 Chi tiết các khoản:
-- BHXH (8%): ${formatCurrency(results.socialInsurance)}
+- BHXH (8%${customBHXH ? ` của ${formatCurrency(bhxhBaseAmount)}` : ""}): ${formatCurrency(results.socialInsurance)}
 - BHYT (1.5%): ${formatCurrency(results.healthInsurance)}
 - BHTN (1%): ${formatCurrency(results.unemploymentInsurance)}
 ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)}` : ""}
@@ -112,9 +198,9 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 </Label>
                 <Input
                   id="salary"
-                  type="number"
-                  value={salary}
-                  onChange={(e) => setSalary(Number(e.target.value))}
+                  type="text"
+                  value={salaryDisplay}
+                  onChange={(e) => handleSalaryChange(e.target.value)}
                   placeholder="Nhập lương"
                   className="border-[#ced4da] dark:border-[#495057] focus:border-[#0d6efd] dark:focus:border-[#3b82f6]"
                 />
@@ -189,6 +275,90 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </div>
             </div>
 
+            {/* Phần BHXH tùy chỉnh */}
+            <div className="p-3 bg-[#f1f5f9] dark:bg-[#1e293b] rounded-md">
+              <div className="flex items-center space-x-2 mb-3">
+                <Checkbox
+                  id="customBHXH"
+                  checked={customBHXH}
+                  onCheckedChange={(checked) => setCustomBHXH(checked === true)}
+                />
+                <Label htmlFor="customBHXH" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                  Tùy chỉnh mức đóng BHXH (8% của số tiền cố định)
+                </Label>
+              </div>
+
+              {customBHXH && (
+                <div className="flex items-center space-x-2 ml-6">
+                  <Input
+                    type="text"
+                    value={bhxhBaseAmountDisplay}
+                    onChange={(e) => handleBHXHBaseAmountChange(e.target.value)}
+                    className="border-[#ced4da] dark:border-[#495057]"
+                    placeholder="Nhập số tiền làm cơ sở tính BHXH"
+                  />
+                  <span className="text-[#2c3e50] dark:text-[#e9ecef]">VND</span>
+                </div>
+              )}
+            </div>
+
+            {/* Phụ cấp và làm thêm giờ */}
+            <div className="p-3 bg-[#f1f5f9] dark:bg-[#1e293b] rounded-md">
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Checkbox
+                      id="hasAllowance"
+                      checked={hasAllowance}
+                      onCheckedChange={(checked) => setHasAllowance(checked === true)}
+                    />
+                    <Label htmlFor="hasAllowance" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                      Phụ cấp
+                    </Label>
+                  </div>
+
+                  {hasAllowance && (
+                    <div className="flex items-center space-x-2 ml-6">
+                      <Input
+                        type="text"
+                        value={allowanceAmountDisplay}
+                        onChange={(e) => handleAllowanceAmountChange(e.target.value)}
+                        className="border-[#ced4da] dark:border-[#495057]"
+                        placeholder="Nhập số tiền phụ cấp"
+                      />
+                      <span className="text-[#2c3e50] dark:text-[#e9ecef]">VND</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Checkbox
+                      id="hasOvertime"
+                      checked={hasOvertime}
+                      onCheckedChange={(checked) => setHasOvertime(checked === true)}
+                    />
+                    <Label htmlFor="hasOvertime" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                      Tiền làm thêm giờ
+                    </Label>
+                  </div>
+
+                  {hasOvertime && (
+                    <div className="flex items-center space-x-2 ml-6">
+                      <Input
+                        type="text"
+                        value={overtimeAmountDisplay}
+                        onChange={(e) => handleOvertimeAmountChange(e.target.value)}
+                        className="border-[#ced4da] dark:border-[#495057]"
+                        placeholder="Nhập tiền làm thêm giờ"
+                      />
+                      <span className="text-[#2c3e50] dark:text-[#e9ecef]">VND</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="pt-2">
               <Button
                 onClick={handleCalculate}
@@ -217,6 +387,27 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="item-1" className="border-[#e9ecef] dark:border-[#343a40]">
               <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+                Thuế thu nhập cá nhân là gì?
+              </AccordionTrigger>
+              <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
+                <p className="mb-2">
+                  Đóng thuế thu nhập cá nhân là việc một cá nhân nào đó phải thực hiện trích một khoản lương hoặc một
+                  khoản thu nhập nào khác nộp vào ngân sách nhà nước. Trong đó Thuế TNCN là một loại thuế trực thu, được
+                  đánh vào một số cá nhân có thu nhập cao và mức chịu thuế này sẽ do pháp luật quy định một cách rõ
+                  ràng.
+                </p>
+                <p className="mt-2">
+                  <strong>Đối tượng nộp thuế:</strong>
+                </p>
+                <ul className="list-disc pl-5 space-y-1 mt-1">
+                  <li>Cá nhân cư trú có thu nhập từ trong và ngoài lãnh thổ Việt Nam</li>
+                  <li>Cá nhân không cư trú có thu nhập từ Việt Nam</li>
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-2" className="border-[#e9ecef] dark:border-[#343a40]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Lương Gross và Lương Net
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -231,7 +422,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="item-2" className="border-[#e9ecef] dark:border-[#343a40]">
+            <AccordionItem value="item-3" className="border-[#e9ecef] dark:border-[#343a40]">
               <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Các khoản bảo hiểm bắt buộc
               </AccordionTrigger>
@@ -255,7 +446,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="item-3" className="border-[#e9ecef] dark:border-[#343a40]">
+            <AccordionItem value="item-4" className="border-[#e9ecef] dark:border-[#343a40]">
               <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Giảm trừ gia cảnh
               </AccordionTrigger>
@@ -271,7 +462,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="item-4" className="border-[#e9ecef] dark:border-[#343a40]">
+            <AccordionItem value="item-5" className="border-[#e9ecef] dark:border-[#343a40]">
               <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Thu nhập tính thuế
               </AccordionTrigger>
@@ -287,7 +478,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="item-5" className="border-[#e9ecef] dark:border-[#343a40]">
+            <AccordionItem value="item-6" className="border-[#e9ecef] dark:border-[#343a40]">
               <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Thuế TNCN (Thuế thu nhập cá nhân)
               </AccordionTrigger>
@@ -295,19 +486,65 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 <p className="mb-2">
                   Thuế TNCN được tính theo biểu thuế lũy tiến từng phần với 7 bậc thuế suất từ 5% đến 35% như sau:
                 </p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Đến 5 triệu đồng: 5%</li>
-                  <li>Trên 5 đến 10 triệu đồng: 10%</li>
-                  <li>Trên 10 đến 18 triệu đồng: 15%</li>
-                  <li>Trên 18 đến 32 triệu đồng: 20%</li>
-                  <li>Trên 32 đến 52 triệu đồng: 25%</li>
-                  <li>Trên 52 đến 80 triệu đồng: 30%</li>
-                  <li>Trên 80 triệu đồng: 35%</li>
-                </ul>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse border border-[#e9ecef] dark:border-[#343a40] mt-2">
+                    <thead>
+                      <tr className="bg-[#f8f9fa] dark:bg-[#212529]">
+                        <th className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2 text-left">Bậc thuế</th>
+                        <th className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2 text-left">
+                          Phần thu nhập tính thuế/tháng (triệu đồng)
+                        </th>
+                        <th className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2 text-left">
+                          Thuế suất (%)
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">1</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Đến 5</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">5</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">2</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 5 đến 10</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">10</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">3</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 10 đến 18</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">15</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">4</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 18 đến 32</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">20</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">5</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 32 đến 52</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">25</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">6</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 52 đến 80</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">30</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">7</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 80</td>
+                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">35</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-3 text-xs italic">
+                  Lưu ý: Mức thuế TNCN nêu trên áp dụng đối với người lao động là cá nhân cư trú.
+                </p>
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="item-6" className="border-[#e9ecef] dark:border-[#343a40]">
+            <AccordionItem value="item-7" className="border-[#e9ecef] dark:border-[#343a40]">
               <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Khu vực (Vùng)
               </AccordionTrigger>
@@ -342,7 +579,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           <div className="flex items-center gap-2 text-sm text-[#6c757d] dark:text-[#adb5bd]">
             <span>Dữ liệu tính toán được cập nhật lần cuối:</span>
-            <span className="font-medium">01/05/2024</span>
+            <span className="font-medium">01/05/2025</span>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -392,6 +629,28 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                   </p>
                 </div>
               </div>
+
+              {(hasAllowance || hasOvertime) && (
+                <div className="grid grid-cols-2 gap-4">
+                  {hasAllowance && (
+                    <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
+                      <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Phụ cấp</p>
+                      <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                        {formatCurrency(allowanceAmount)}
+                      </p>
+                    </div>
+                  )}
+                  {hasOvertime && (
+                    <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
+                      <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Làm thêm giờ</p>
+                      <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                        {formatCurrency(overtimeAmount)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
                   <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Tổng các khoản bảo hiểm</p>
@@ -423,8 +682,29 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                     {formatCurrency(salaryType === "gross" ? salary : results.grossSalary)}
                   </div>
                 </div>
+
+                {hasAllowance && (
+                  <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Phụ cấp</div>
+                    <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                      {formatCurrency(allowanceAmount)}
+                    </div>
+                  </div>
+                )}
+
+                {hasOvertime && (
+                  <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Tiền làm thêm giờ</div>
+                    <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                      {formatCurrency(overtimeAmount)}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHXH (8%)</div>
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">
+                    BHXH (8%{customBHXH ? ` của ${formatCurrency(bhxhBaseAmount)}` : ""})
+                  </div>
                   <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
                     {formatCurrency(results.socialInsurance)}
                   </div>
