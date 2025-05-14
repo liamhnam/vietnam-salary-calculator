@@ -36,9 +36,8 @@ export function SalaryCalculator() {
 
   // Thêm các state mới
   const [customBHXH, setCustomBHXH] = useState<boolean>(false)
-  const [bhxhRate, setBHXHRate] = useState<number>(8)
-  const [bhxhAmount, setBHXHAmount] = useState<number>(0)
-  const [bhxhAmountDisplay, setBHXHAmountDisplay] = useState<string>("0")
+  const [bhxhBaseAmount, setBHXHBaseAmount] = useState<number>(0)
+  const [bhxhBaseAmountDisplay, setBHXHBaseAmountDisplay] = useState<string>("0")
   const [hasAllowance, setHasAllowance] = useState<boolean>(false)
   const [allowanceAmount, setAllowanceAmount] = useState<number>(0)
   const [allowanceAmountDisplay, setAllowanceAmountDisplay] = useState<string>("0")
@@ -54,8 +53,7 @@ export function SalaryCalculator() {
       hasUnion,
       unionRate,
       customBHXH,
-      bhxhRate,
-      bhxhAmount,
+      bhxhBaseAmount,
       hasAllowance,
       allowanceAmount,
       hasOvertime,
@@ -72,11 +70,11 @@ export function SalaryCalculator() {
     setSalaryDisplay(formatNumber(numberValue))
   }
 
-  const handleBHXHAmountChange = (value: string) => {
+  const handleBHXHBaseAmountChange = (value: string) => {
     const cleanValue = value.replace(/[^\d]/g, "")
     const numberValue = cleanValue ? Number.parseInt(cleanValue, 10) : 0
-    setBHXHAmount(numberValue)
-    setBHXHAmountDisplay(formatNumber(numberValue))
+    setBHXHBaseAmount(numberValue)
+    setBHXHBaseAmountDisplay(formatNumber(numberValue))
   }
 
   const handleAllowanceAmountChange = (value: string) => {
@@ -94,40 +92,43 @@ export function SalaryCalculator() {
   }
 
   const handleCalculate = () => {
+    // Log để debug
+    console.log("Calculating with the following values:")
+    console.log("Custom BHXH:", customBHXH)
+    console.log("BHXH Base Amount:", bhxhBaseAmount)
+
     if (salaryType === "gross") {
-      setResults(
-        calculateGrossToNet(
-          salary,
-          dependents,
-          region,
-          hasUnion,
-          unionRate,
-          customBHXH,
-          bhxhRate,
-          bhxhAmount,
-          hasAllowance,
-          allowanceAmount,
-          hasOvertime,
-          overtimeAmount,
-        ),
+      const result = calculateGrossToNet(
+        salary,
+        dependents,
+        region,
+        hasUnion,
+        unionRate,
+        customBHXH,
+        bhxhBaseAmount,
+        hasAllowance,
+        allowanceAmount,
+        hasOvertime,
+        overtimeAmount,
       )
+      console.log("Calculation result:", result)
+      setResults(result)
     } else {
-      setResults(
-        calculateNetToGross(
-          salary,
-          dependents,
-          region,
-          hasUnion,
-          unionRate,
-          customBHXH,
-          bhxhRate,
-          bhxhAmount,
-          hasAllowance,
-          allowanceAmount,
-          hasOvertime,
-          overtimeAmount,
-        ),
+      const result = calculateNetToGross(
+        salary,
+        dependents,
+        region,
+        hasUnion,
+        unionRate,
+        customBHXH,
+        bhxhBaseAmount,
+        hasAllowance,
+        allowanceAmount,
+        hasOvertime,
+        overtimeAmount,
       )
+      console.log("Calculation result:", result)
+      setResults(result)
     }
     setShowResults(true)
   }
@@ -141,7 +142,7 @@ ${hasOvertime ? `Tiền làm thêm giờ: ${formatCurrency(overtimeAmount)}` : "
 Lương ${salaryType === "gross" ? "net" : "gross"}: ${formatCurrency(salaryType === "gross" ? results.netSalary : results.grossSalary)}
 
 Chi tiết các khoản:
-- BHXH (${customBHXH ? "Tùy chỉnh" : "8%"}): ${formatCurrency(results.socialInsurance)}
+- BHXH (8%${customBHXH ? ` của ${formatCurrency(bhxhBaseAmount)}` : ""}): ${formatCurrency(results.socialInsurance)}
 - BHYT (1.5%): ${formatCurrency(results.healthInsurance)}
 - BHTN (1%): ${formatCurrency(results.unemploymentInsurance)}
 ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)}` : ""}
@@ -288,7 +289,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                   onCheckedChange={(checked) => setCustomBHXH(checked === true)}
                 />
                 <Label htmlFor="customBHXH" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                  Tùy chỉnh mức đóng BHXH
+                  Tùy chỉnh mức đóng BHXH (8% của số tiền cố định)
                 </Label>
               </div>
 
@@ -296,10 +297,10 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 <div className="flex items-center space-x-2 ml-6">
                   <Input
                     type="text"
-                    value={bhxhAmountDisplay}
-                    onChange={(e) => handleBHXHAmountChange(e.target.value)}
+                    value={bhxhBaseAmountDisplay}
+                    onChange={(e) => handleBHXHBaseAmountChange(e.target.value)}
                     className="border-[#ced4da] dark:border-[#495057]"
-                    placeholder="Nhập số tiền BHXH cố định"
+                    placeholder="Nhập số tiền làm cơ sở tính BHXH"
                   />
                   <span className="text-[#2c3e50] dark:text-[#e9ecef]">VND</span>
                 </div>
@@ -583,7 +584,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           <div className="flex items-center gap-2 text-sm text-[#6c757d] dark:text-[#adb5bd]">
             <span>Dữ liệu tính toán được cập nhật lần cuối:</span>
-            <span className="font-medium">14/05/2025</span>
+            <span className="font-medium">01/05/2025</span>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -707,7 +708,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
 
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
                   <div className="text-sm text-[#495057] dark:text-[#adb5bd]">
-                    BHXH ({customBHXH ? "Cố định" : "8%"})
+                    BHXH (8%{customBHXH ? ` của ${formatCurrency(bhxhBaseAmount)}` : ""})
                   </div>
                   <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
                     {formatCurrency(results.socialInsurance)}

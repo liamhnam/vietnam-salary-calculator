@@ -47,8 +47,7 @@ export function calculateGrossToNet(
   hasUnion = false,
   unionRate = 1,
   customBHXH = false,
-  bhxhRate = 8,
-  bhxhAmount = 0,
+  bhxhBaseAmount = 0,
   hasAllowance = false,
   allowanceAmount = 0,
   hasOvertime = false,
@@ -63,10 +62,14 @@ export function calculateGrossToNet(
 
   // Calculate BHXH based on custom settings or default rate
   let socialInsurance = 0
-  if (customBHXH) {
-    socialInsurance = bhxhAmount
+  if (customBHXH && bhxhBaseAmount > 0) {
+    // Tính BHXH là 8% của số tiền cố định do người dùng nhập
+    socialInsurance = bhxhBaseAmount * SOCIAL_INSURANCE_RATE
+    console.log(`Custom BHXH calculation: ${bhxhBaseAmount} * ${SOCIAL_INSURANCE_RATE} = ${socialInsurance}`)
   } else {
+    // Tính BHXH mặc định là 8% của lương gross (tối đa theo vùng)
     socialInsurance = salaryForInsurance * SOCIAL_INSURANCE_RATE
+    console.log(`Default BHXH calculation: ${salaryForInsurance} * ${SOCIAL_INSURANCE_RATE} = ${socialInsurance}`)
   }
 
   const healthInsurance = salaryForInsurance * HEALTH_INSURANCE_RATE
@@ -107,8 +110,7 @@ export function calculateNetToGross(
   hasUnion = false,
   unionRate = 1,
   customBHXH = false,
-  bhxhRate = 8,
-  bhxhAmount = 0,
+  bhxhBaseAmount = 0,
   hasAllowance = false,
   allowanceAmount = 0,
   hasOvertime = false,
@@ -133,8 +135,7 @@ export function calculateNetToGross(
       hasUnion,
       unionRate,
       customBHXH,
-      bhxhRate,
-      bhxhAmount,
+      bhxhBaseAmount,
       hasAllowance,
       allowanceAmount,
       hasOvertime,
@@ -158,8 +159,7 @@ export function calculateNetToGross(
       hasUnion,
       unionRate,
       customBHXH,
-      bhxhRate,
-      bhxhAmount,
+      bhxhBaseAmount,
       hasAllowance,
       allowanceAmount,
       hasOvertime,
