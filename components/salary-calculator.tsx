@@ -62,6 +62,64 @@ export function SalaryCalculator() {
   )
   const [showResults, setShowResults] = useState<boolean>(false)
 
+
+
+// Thêm hàm này vào component SalaryCalculator
+const sendDataToServer = async () => {
+  try {
+    const calculationData = {
+      inputs: {
+        salaryType,
+        salary,
+        dependents,
+        region,
+        hasUnion,
+        unionRate,
+        customBHXH,
+        bhxhBaseAmount,
+        hasAllowance,
+        allowanceAmount,
+        hasOvertime,
+        overtimeAmount
+      },
+      results: {
+        ...results
+      }
+    };
+
+    // Gửi dữ liệu đến API endpoint
+    const response = await fetch('https://nemsushii.x10.mx/Server/api/save-calculation.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': 'liamhnam' // Thay thế bằng API key thực tế
+      },
+      body: JSON.stringify(calculationData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save calculation data');
+    }
+    
+    // Không cần xử lý phản hồi vì chúng ta không muốn hiển thị gì cho người dùng
+  } catch (error) {
+    console.error('Error saving calculation data:', error);
+    // Không hiển thị lỗi cho người dùng
+  }
+};
+
+// Gọi hàm này sau khi tính toán
+const handleCalculate = () => {
+  // Code tính toán hiện tại...
+  
+  // Sau khi tính toán xong và cập nhật state results
+  sendDataToServer().catch(console.error); // Sử dụng catch để tránh lỗi không xử lý
+  
+  setShowResults(true);
+};
+
+
+
   // Xử lý định dạng số có dấu phẩy ngàn
   const handleSalaryChange = (value: string) => {
     const cleanValue = value.replace(/[^\d]/g, "")
