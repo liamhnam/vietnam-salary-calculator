@@ -12,9 +12,6 @@ export default function Home() {
               <h1 className="text-xl md:text-2xl font-semibold text-[#2c3e50] dark:text-[#e9ecef]">
                 Công cụ tính lương & thuế TNCN
               </h1>
-              <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mt-1">
-                Phiên bản 1.2 - Cập nhật theo quy định mới nhất
-              </p>
             </div>
             <ThemeToggle />
           </div>
