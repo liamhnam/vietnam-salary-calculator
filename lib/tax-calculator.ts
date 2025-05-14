@@ -31,6 +31,7 @@ interface TaxCalculationResult {
   socialInsurance: number
   healthInsurance: number
   unemploymentInsurance: number
+  unionFee: number
   taxableIncome: number
   personalIncomeTax: number
 }
@@ -38,7 +39,13 @@ interface TaxCalculationResult {
 /**
  * Calculate tax and net salary from gross salary
  */
-export function calculateGrossToNet(grossSalary: number, dependents: number, region: string): TaxCalculationResult {
+export function calculateGrossToNet(
+  grossSalary: number,
+  dependents: number,
+  region: string,
+  hasUnion = false,
+  unionRate = 1,
+): TaxCalculationResult {
   // Calculate insurance contributions
   const maxSalaryForInsurance = MAX_SALARY_FOR_INSURANCE[region] || MAX_SALARY_FOR_INSURANCE["1"]
   const salaryForInsurance = Math.min(grossSalary, maxSalaryForInsurance)
@@ -46,9 +53,10 @@ export function calculateGrossToNet(grossSalary: number, dependents: number, reg
   const socialInsurance = salaryForInsurance * SOCIAL_INSURANCE_RATE
   const healthInsurance = salaryForInsurance * HEALTH_INSURANCE_RATE
   const unemploymentInsurance = salaryForInsurance * UNEMPLOYMENT_INSURANCE_RATE
+  const unionFee = hasUnion ? salaryForInsurance * (unionRate / 100) : 0
 
   // Calculate taxable income
-  const totalDeductions = socialInsurance + healthInsurance + unemploymentInsurance
+  const totalDeductions = socialInsurance + healthInsurance + unemploymentInsurance + unionFee
   const totalAllowances = PERSONAL_DEDUCTION + dependents * DEPENDENT_DEDUCTION
   const taxableIncome = Math.max(0, grossSalary - totalDeductions - totalAllowances)
 
@@ -64,6 +72,7 @@ export function calculateGrossToNet(grossSalary: number, dependents: number, reg
     socialInsurance,
     healthInsurance,
     unemploymentInsurance,
+    unionFee,
     taxableIncome,
     personalIncomeTax,
   }
@@ -72,7 +81,13 @@ export function calculateGrossToNet(grossSalary: number, dependents: number, reg
 /**
  * Calculate gross salary from desired net salary
  */
-export function calculateNetToGross(targetNetSalary: number, dependents: number, region: string): TaxCalculationResult {
+export function calculateNetToGross(
+  targetNetSalary: number,
+  dependents: number,
+  region: string,
+  hasUnion = false,
+  unionRate = 1,
+): TaxCalculationResult {
   // Use binary search to find the gross salary that results in the target net salary
   let low = targetNetSalary
   let high = targetNetSalary * 2 // Initial upper bound
@@ -82,7 +97,7 @@ export function calculateNetToGross(targetNetSalary: number, dependents: number,
   // Binary search with precision of 1000 VND
   while (high - low > 1000) {
     grossSalary = Math.floor((low + high) / 2)
-    const calculationResult = calculateGrossToNet(grossSalary, dependents, region)
+    const calculationResult = calculateGrossToNet(grossSalary, dependents, region, hasUnion, unionRate)
 
     if (calculationResult.netSalary > targetNetSalary) {
       high = grossSalary
@@ -94,7 +109,7 @@ export function calculateNetToGross(targetNetSalary: number, dependents: number,
 
   // If we didn't find a result (unlikely), calculate with the final gross salary
   if (!result) {
-    result = calculateGrossToNet(grossSalary, dependents, region)
+    result = calculateGrossToNet(grossSalary, dependents, region, hasUnion, unionRate)
   }
 
   // Adjust the result to match the target net salary exactly

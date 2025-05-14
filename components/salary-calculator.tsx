@@ -6,11 +6,19 @@ import { Copy, InfoIcon, FileText, Calculator } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { calculateGrossToNet, calculateNetToGross } from "@/lib/tax-calculator"
@@ -22,14 +30,18 @@ export function SalaryCalculator() {
   const [salary, setSalary] = useState<number>(30000000)
   const [dependents, setDependents] = useState<number>(0)
   const [region, setRegion] = useState<string>("1")
-  const [results, setResults] = useState(() => calculateGrossToNet(30000000, dependents, region))
+  const [hasUnion, setHasUnion] = useState<boolean>(false)
+  const [unionRate, setUnionRate] = useState<number>(1)
+  const [results, setResults] = useState(() => calculateGrossToNet(30000000, dependents, region, false, 1))
+  const [showResults, setShowResults] = useState<boolean>(false)
 
   const handleCalculate = () => {
     if (salaryType === "gross") {
-      setResults(calculateGrossToNet(salary, dependents, region))
+      setResults(calculateGrossToNet(salary, dependents, region, hasUnion, unionRate))
     } else {
-      setResults(calculateNetToGross(salary, dependents, region))
+      setResults(calculateNetToGross(salary, dependents, region, hasUnion, unionRate))
     }
+    setShowResults(true)
   }
 
   const handleCopyResults = () => {
@@ -42,6 +54,7 @@ Chi tiết các khoản:
 - BHXH (8%): ${formatCurrency(results.socialInsurance)}
 - BHYT (1.5%): ${formatCurrency(results.healthInsurance)}
 - BHTN (1%): ${formatCurrency(results.unemploymentInsurance)}
+${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)}` : ""}
 - Giảm trừ bản thân: ${formatCurrency(11000000)}
 - Giảm trừ người phụ thuộc: ${formatCurrency(dependents * 4400000)}
 - Thu nhập tính thuế: ${formatCurrency(results.taxableIncome)}
@@ -148,147 +161,43 @@ Chi tiết các khoản:
                 </Select>
               </div>
 
-              <div className="flex items-end">
-                <Button
-                  onClick={handleCalculate}
-                  className="w-full bg-[#0d6efd] hover:bg-[#0b5ed7] dark:bg-[#3b82f6] dark:hover:bg-[#2563eb]"
-                >
-                  Tính toán
-                </Button>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="hasUnion"
+                      checked={hasUnion}
+                      onCheckedChange={(checked) => setHasUnion(checked === true)}
+                    />
+                    <Label htmlFor="hasUnion" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                      Công đoàn
+                    </Label>
+                  </div>
+                  {hasUnion && (
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="unionRate"
+                        type="number"
+                        value={unionRate}
+                        onChange={(e) => setUnionRate(Number(e.target.value))}
+                        className="w-16 h-8 text-sm border-[#ced4da] dark:border-[#495057]"
+                      />
+                      <span className="text-[#2c3e50] dark:text-[#e9ecef]">%</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      <Card className="border border-[#e9ecef] dark:border-[#343a40] shadow-sm">
-        <CardHeader className="bg-[#f8f9fa] dark:bg-[#212529] border-b border-[#e9ecef] dark:border-[#343a40] pb-4 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-[#0d6efd] dark:text-[#3b82f6]" />
-            <div>
-              <CardTitle className="text-[#2c3e50] dark:text-[#e9ecef] text-lg font-medium">
-                Kết quả tính lương
-              </CardTitle>
-              <CardDescription className="text-[#6c757d] dark:text-[#adb5bd]">
-                Chi tiết các khoản lương và thuế
-              </CardDescription>
+            <div className="pt-2">
+              <Button
+                onClick={handleCalculate}
+                className="w-full bg-[#0d6efd] hover:bg-[#0b5ed7] dark:bg-[#3b82f6] dark:hover:bg-[#2563eb]"
+              >
+                Tính toán
+              </Button>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopyResults}
-            className="border-[#ced4da] dark:border-[#495057] hover:bg-[#e9ecef] dark:hover:bg-[#343a40]"
-          >
-            <Copy className="h-4 w-4 mr-2" />
-            <span>Sao chép</span>
-          </Button>
-        </CardHeader>
-        <CardContent className="pt-5">
-          <Tabs defaultValue="summary">
-            <TabsList className="grid w-full grid-cols-2 bg-[#f1f5f9] dark:bg-[#1e293b] p-1">
-              <TabsTrigger
-                value="summary"
-                className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#212529] data-[state=active]:text-[#0d6efd] dark:data-[state=active]:text-[#3b82f6] data-[state=active]:shadow-sm"
-              >
-                Tổng quan
-              </TabsTrigger>
-              <TabsTrigger
-                value="details"
-                className="data-[state=active]:bg-white dark:data-[state=active]:bg-[#212529] data-[state=active]:text-[#0d6efd] dark:data-[state=active]:text-[#3b82f6] data-[state=active]:shadow-sm"
-              >
-                Chi tiết
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="summary" className="space-y-5 pt-5">
-              <div className="grid grid-cols-2 gap-5">
-                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Lương Gross</p>
-                  <p className="text-xl font-semibold text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "gross" ? salary : results.grossSalary)}
-                  </p>
-                </div>
-                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Lương Net</p>
-                  <p className="text-xl font-semibold text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "net" ? salary : results.netSalary)}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-5">
-                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Tổng các khoản bảo hiểm</p>
-                  <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(results.socialInsurance + results.healthInsurance + results.unemploymentInsurance)}
-                  </p>
-                </div>
-                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Thuế TNCN</p>
-                  <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(results.personalIncomeTax)}
-                  </p>
-                </div>
-              </div>
-            </TabsContent>
-            <TabsContent value="details" className="pt-5">
-              <div className="space-y-3 p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm font-medium text-[#2c3e50] dark:text-[#e9ecef]">Lương Gross</div>
-                  <div className="text-sm font-medium text-right text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "gross" ? salary : results.grossSalary)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHXH (8%)</div>
-                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(results.socialInsurance)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHYT (1.5%)</div>
-                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(results.healthInsurance)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHTN (1%)</div>
-                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(results.unemploymentInsurance)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Giảm trừ bản thân</div>
-                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(11000000)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Giảm trừ người phụ thuộc</div>
-                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(dependents * 4400000)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Thu nhập tính thuế</div>
-                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(results.taxableIncome)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Thuế TNCN</div>
-                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(results.personalIncomeTax)}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 pt-3">
-                  <div className="text-sm font-semibold text-[#2c3e50] dark:text-[#e9ecef]">Lương Net</div>
-                  <div className="text-sm font-semibold text-right text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "net" ? salary : results.netSalary)}
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
         </CardContent>
       </Card>
 
@@ -335,9 +244,13 @@ Chi tiết các khoản:
                   <strong>BHYT (Bảo hiểm y tế - 1.5%):</strong> Khoản đóng góp bắt buộc để đảm bảo quyền lợi khám chữa
                   bệnh.
                 </p>
-                <p>
+                <p className="mb-2">
                   <strong>BHTN (Bảo hiểm thất nghiệp - 1%):</strong> Khoản đóng góp bắt buộc để đảm bảo quyền lợi khi
                   người lao động bị mất việc làm.
+                </p>
+                <p>
+                  <strong>Công đoàn (1-2%):</strong> Khoản đóng góp cho tổ chức công đoàn, thường là 1% lương, tùy theo
+                  quy định của từng đơn vị.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -365,11 +278,11 @@ Chi tiết các khoản:
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
                 <p>
                   Thu nhập tính thuế được tính bằng cách lấy lương gross trừ đi các khoản bảo hiểm bắt buộc (BHXH, BHYT,
-                  BHTN) và các khoản giảm trừ gia cảnh (giảm trừ bản thân và giảm trừ người phụ thuộc).
+                  BHTN, Công đoàn) và các khoản giảm trừ gia cảnh (giảm trừ bản thân và giảm trừ người phụ thuộc).
                 </p>
                 <p className="mt-2">
-                  <strong>Công thức:</strong> Thu nhập tính thuế = Lương gross - (BHXH + BHYT + BHTN) - Giảm trừ bản
-                  thân - Giảm trừ người phụ thuộc
+                  <strong>Công thức:</strong> Thu nhập tính thuế = Lương gross - (BHXH + BHYT + BHTN + Công đoàn) - Giảm
+                  trừ bản thân - Giảm trừ người phụ thuộc
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -449,6 +362,141 @@ Chi tiết các khoản:
           </div>
         </div>
       </div>
+
+      {/* Modal hiển thị kết quả */}
+      <Dialog open={showResults} onOpenChange={setShowResults}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-[#0d6efd] dark:text-[#3b82f6]" />
+              Kết quả tính lương
+            </DialogTitle>
+            <DialogDescription>Chi tiết các khoản lương và thuế</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Phần tổng quan */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Tổng quan</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
+                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Lương Gross</p>
+                  <p className="text-xl font-semibold text-[#2c3e50] dark:text-[#e9ecef]">
+                    {formatCurrency(salaryType === "gross" ? salary : results.grossSalary)}
+                  </p>
+                </div>
+                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
+                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Lương Net</p>
+                  <p className="text-xl font-semibold text-[#2c3e50] dark:text-[#e9ecef]">
+                    {formatCurrency(salaryType === "net" ? salary : results.netSalary)}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
+                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Tổng các khoản bảo hiểm</p>
+                  <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                    {formatCurrency(
+                      results.socialInsurance +
+                        results.healthInsurance +
+                        results.unemploymentInsurance +
+                        (hasUnion ? results.unionFee : 0),
+                    )}
+                  </p>
+                </div>
+                <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
+                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Thuế TNCN</p>
+                  <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                    {formatCurrency(results.personalIncomeTax)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Phần chi tiết */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Chi tiết</h3>
+              <div className="space-y-3 p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm font-medium text-[#2c3e50] dark:text-[#e9ecef]">Lương Gross</div>
+                  <div className="text-sm font-medium text-right text-[#2c3e50] dark:text-[#e9ecef]">
+                    {formatCurrency(salaryType === "gross" ? salary : results.grossSalary)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHXH (8%)</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(results.socialInsurance)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHYT (1.5%)</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(results.healthInsurance)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHTN (1%)</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(results.unemploymentInsurance)}
+                  </div>
+                </div>
+                {hasUnion && (
+                  <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Công đoàn ({unionRate}%)</div>
+                    <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                      {formatCurrency(results.unionFee)}
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Giảm trừ bản thân</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(11000000)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Giảm trừ người phụ thuộc</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(dependents * 4400000)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Thu nhập tính thuế</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(results.taxableIncome)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Thuế TNCN</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(results.personalIncomeTax)}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-3">
+                  <div className="text-sm font-semibold text-[#2c3e50] dark:text-[#e9ecef]">Lương Net</div>
+                  <div className="text-sm font-semibold text-right text-[#2c3e50] dark:text-[#e9ecef]">
+                    {formatCurrency(salaryType === "net" ? salary : results.netSalary)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowResults(false)} className="mr-auto">
+              Đóng
+            </Button>
+            <Button
+              onClick={handleCopyResults}
+              className="bg-[#0d6efd] hover:bg-[#0b5ed7] dark:bg-[#3b82f6] dark:hover:bg-[#2563eb]"
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Sao chép kết quả
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
