@@ -62,6 +62,56 @@ export function SalaryCalculator() {
   )
   const [showResults, setShowResults] = useState<boolean>(false)
 
+
+
+// Thêm hàm này vào component SalaryCalculator
+const sendDataToServer = async () => {
+  try {
+    const calculationData = {
+      inputs: {
+        salaryType,
+        salary,
+        dependents,
+        region,
+        hasUnion,
+        unionRate,
+        customBHXH,
+        bhxhBaseAmount,
+        hasAllowance,
+        allowanceAmount,
+        hasOvertime,
+        overtimeAmount
+      },
+      results: {
+        ...results
+      }
+    };
+
+    // Gửi dữ liệu đến API endpoint
+    const response = await fetch('https://nemsushii.x10.mx/api/save-calculation.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': 'liamhnam' // Thay thế bằng API key thực tế
+      },
+      body: JSON.stringify(calculationData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save calculation data');
+    }
+    
+    // Không cần xử lý phản hồi vì chúng ta không muốn hiển thị gì cho người dùng
+  } catch (error) {
+    console.error('Error saving calculation data:', error);
+    // Không hiển thị lỗi cho người dùng
+  }
+};
+
+
+
+
+
   // Xử lý định dạng số có dấu phẩy ngàn
   const handleSalaryChange = (value: string) => {
     const cleanValue = value.replace(/[^\d]/g, "")
@@ -97,9 +147,8 @@ export function SalaryCalculator() {
     console.log("Custom BHXH:", customBHXH)
     console.log("BHXH Base Amount:", bhxhBaseAmount)
 
-    let result
     if (salaryType === "gross") {
-      result = calculateGrossToNet(
+      const result = calculateGrossToNet(
         salary,
         dependents,
         region,
@@ -112,8 +161,10 @@ export function SalaryCalculator() {
         hasOvertime,
         overtimeAmount,
       )
+      console.log("Calculation result:", result)
+      setResults(result)
     } else {
-      result = calculateNetToGross(
+      const result = calculateNetToGross(
         salary,
         dependents,
         region,
@@ -126,58 +177,11 @@ export function SalaryCalculator() {
         hasOvertime,
         overtimeAmount,
       )
+      console.log("Calculation result:", result)
+      setResults(result)
     }
-    console.log("Calculation result:", result)
-    setResults(result)
-
-    // Gửi dữ liệu đến server nếu cần
-    sendDataToServer().catch(console.error)
-
+    sendDataToServer().catch(console.error); // Sử dụng catch để tránh lỗi không xử 
     setShowResults(true)
-  }
-
-  // Hàm gửi dữ liệu đến server
-  const sendDataToServer = async () => {
-    try {
-      const calculationData = {
-        inputs: {
-          salaryType,
-          salary,
-          dependents,
-          region,
-          hasUnion,
-          unionRate,
-          customBHXH,
-          bhxhBaseAmount,
-          hasAllowance,
-          allowanceAmount,
-          hasOvertime,
-          overtimeAmount,
-        },
-        results: {
-          ...results,
-        },
-      }
-
-      // Gửi dữ liệu đến API endpoint
-      const response = await fetch("https://nemsushii.x10.mx/api/save-calculation.php", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": "liamhnam", // Thay thế bằng API key thực tế
-        },
-        body: JSON.stringify(calculationData),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to save calculation data")
-      }
-
-      // Không cần xử lý phản hồi vì chúng ta không muốn hiển thị gì cho người dùng
-    } catch (error) {
-      console.error("Error saving calculation data:", error)
-      // Không hiển thị lỗi cho người dùng
-    }
   }
 
   const handleCopyResults = () => {
