@@ -20,7 +20,7 @@ export default function Home() {
           </div>
           <SalaryCalculator />
           <footer className="mt-8 text-center text-sm text-[#6c757d] dark:text-[#adb5bd] py-4 border-t border-[#dee2e6] dark:border-[#343a40]">
-            <p>© {new Date().getFullYear()} - Tiko.tech</p>
+            <p>© {new Date().getFullYear()} - LIAMHNAM</p>
           </footer>
         </div>
       </main>
