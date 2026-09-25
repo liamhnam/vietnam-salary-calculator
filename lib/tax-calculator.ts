@@ -1,197 +1,181 @@
-// Constants for tax calculation
-const PERSONAL_DEDUCTION = 11000000 // 11 million VND
-const DEPENDENT_DEDUCTION = 4400000 // 4.4 million VND per dependent
-const SOCIAL_INSURANCE_RATE = 0.08 // 8%
-const HEALTH_INSURANCE_RATE = 0.015 // 1.5%
-const UNEMPLOYMENT_INSURANCE_RATE = 0.01 // 1%
+/**
+ * Thông số pháp lý áp dụng cho kỳ lương từ 01/07/2026.
+ *
+ * - Giảm trừ gia cảnh: Nghị quyết 110/2025/UBTVQH15 (áp dụng từ kỳ tính thuế 2026),
+ *   Nghị định 253/2026/NĐ-CP.
+ * - Biểu thuế lũy tiến 5 bậc: Luật Thuế TNCN số 109/2025/QH15 (áp dụng cho tiền lương,
+ *   tiền công từ kỳ tính thuế 2026).
+ * - Tiền lương làm thêm giờ, làm đêm được miễn thuế: khoản 8 Điều 4 Luật 109/2025/QH15,
+ *   Điều 26 Nghị định 253/2026/NĐ-CP.
+ * - Lương cơ sở 2.530.000đ: Nghị định 161/2026/NĐ-CP (từ 01/07/2026).
+ * - Trần BHXH = 20 lần mức tham chiếu (= lương cơ sở): Điều 31 Luật BHXH 2024.
+ * - Trần BHYT = 20 lần lương cơ sở.
+ * - Trần BHTN = 20 lần lương tối thiểu vùng, NLĐ đóng 1%: Luật Việc làm 2025.
+ * - Lương tối thiểu vùng: Nghị định 293/2025/NĐ-CP (từ 01/01/2026).
+ * - Đoàn phí công đoàn 0,5%, tối đa 10% lương cơ sở: Quyết định 61/QĐ-TLĐ (từ 01/07/2025);
+ *   không phải khoản giảm trừ khi tính thuế TNCN (Công văn 1756/TCT-TNCN).
+ */
+export const EFFECTIVE_DATE = "01/07/2026"
 
-// Maximum salary for insurance calculation based on region
-const MAX_SALARY_FOR_INSURANCE: Record<string, number> = {
-  "1": 29800000, // Region I: 29.8 million VND
-  "2": 26400000, // Region II: 26.4 million VND
-  "3": 23300000, // Region III: 23.3 million VND
-  "4": 20900000, // Region IV: 20.9 million VND
+export const BASE_SALARY = 2_530_000
+
+export const PERSONAL_DEDUCTION = 15_500_000
+export const DEPENDENT_DEDUCTION = 6_200_000
+
+export const SOCIAL_INSURANCE_RATE = 0.08
+export const HEALTH_INSURANCE_RATE = 0.015
+export const UNEMPLOYMENT_INSURANCE_RATE = 0.01
+export const UNION_FEE_RATE = 0.005
+
+export const MAX_SOCIAL_HEALTH_INSURANCE_SALARY = 20 * BASE_SALARY // 50.600.000
+export const MAX_UNION_FEE = 0.1 * BASE_SALARY // 253.000
+
+export const REGIONAL_MINIMUM_WAGE: Record<string, number> = {
+  "1": 5_310_000,
+  "2": 4_730_000,
+  "3": 4_140_000,
+  "4": 3_700_000,
 }
 
-// Tax brackets for progressive income tax
-const TAX_BRACKETS = [
-  { threshold: 5000000, rate: 0.05 }, // 5%
-  { threshold: 10000000, rate: 0.1 }, // 10%
-  { threshold: 18000000, rate: 0.15 }, // 15%
-  { threshold: 32000000, rate: 0.2 }, // 20%
-  { threshold: 52000000, rate: 0.25 }, // 25%
-  { threshold: 80000000, rate: 0.3 }, // 30%
-  { threshold: Number.POSITIVE_INFINITY, rate: 0.35 }, // 35%
+export function getMaxUnemploymentInsuranceSalary(region: string): number {
+  return 20 * (REGIONAL_MINIMUM_WAGE[region] ?? REGIONAL_MINIMUM_WAGE["1"])
+}
+
+// Biểu thuế lũy tiến từng phần (thu nhập tính thuế theo tháng)
+export const TAX_BRACKETS = [
+  { threshold: 10_000_000, rate: 0.05 },
+  { threshold: 30_000_000, rate: 0.1 },
+  { threshold: 60_000_000, rate: 0.2 },
+  { threshold: 100_000_000, rate: 0.3 },
+  { threshold: Number.POSITIVE_INFINITY, rate: 0.35 },
 ]
 
-// Interface for calculation results
-interface TaxCalculationResult {
+export interface SalaryOptions {
+  dependents: number
+  region: string
+  hasUnion?: boolean
+  /** Tự nhập tiền lương làm căn cứ đóng bảo hiểm (áp dụng cho BHXH, BHYT, BHTN và đoàn phí) */
+  customInsuranceBase?: boolean
+  insuranceBaseAmount?: number
+  /** Phụ cấp, khoản bổ sung chịu thuế, không tính vào lương đóng bảo hiểm */
+  allowanceAmount?: number
+  /** Tiền lương làm thêm giờ đúng quy định (miễn thuế TNCN) */
+  overtimeAmount?: number
+}
+
+export interface TaxCalculationResult {
   grossSalary: number
-  netSalary: number
+  allowanceAmount: number
+  overtimeAmount: number
+  totalIncome: number
+  insuranceBase: number
+  belowMinimumWage: boolean
   socialInsurance: number
   healthInsurance: number
   unemploymentInsurance: number
+  totalInsurance: number
   unionFee: number
+  personalDeduction: number
+  dependentDeduction: number
   taxableIncome: number
   personalIncomeTax: number
-  totalIncome?: number
+  netSalary: number
 }
 
 /**
- * Calculate tax and net salary from gross salary
+ * Tính lương NET từ lương GROSS
  */
-export function calculateGrossToNet(
-  grossSalary: number,
-  dependents: number,
-  region: string,
-  hasUnion = false,
-  unionRate = 1,
-  customBHXH = false,
-  bhxhBaseAmount = 0,
-  hasAllowance = false,
-  allowanceAmount = 0,
-  hasOvertime = false,
-  overtimeAmount = 0,
-): TaxCalculationResult {
-  // Calculate total income including allowances and overtime
-  const totalIncome = grossSalary + (hasAllowance ? allowanceAmount : 0) + (hasOvertime ? overtimeAmount : 0)
+export function calculateGrossToNet(grossSalary: number, options: SalaryOptions): TaxCalculationResult {
+  const { dependents, region, hasUnion = false, customInsuranceBase = false } = options
+  const allowanceAmount = Math.max(0, options.allowanceAmount ?? 0)
+  const overtimeAmount = Math.max(0, options.overtimeAmount ?? 0)
+  const gross = Math.max(0, grossSalary)
 
-  // Calculate insurance contributions
-  const maxSalaryForInsurance = MAX_SALARY_FOR_INSURANCE[region] || MAX_SALARY_FOR_INSURANCE["1"]
-  const salaryForInsurance = Math.min(grossSalary, maxSalaryForInsurance)
+  const insuranceBase = customInsuranceBase ? Math.max(0, options.insuranceBaseAmount ?? 0) : gross
+  const minimumWage = REGIONAL_MINIMUM_WAGE[region] ?? REGIONAL_MINIMUM_WAGE["1"]
 
-  // Calculate BHXH based on custom settings or default rate
-  let socialInsurance = 0
-  if (customBHXH && bhxhBaseAmount > 0) {
-    // Tính BHXH là 8% của số tiền cố định do người dùng nhập
-    socialInsurance = bhxhBaseAmount * SOCIAL_INSURANCE_RATE
-    console.log(`Custom BHXH calculation: ${bhxhBaseAmount} * ${SOCIAL_INSURANCE_RATE} = ${socialInsurance}`)
-  } else {
-    // Tính BHXH mặc định là 8% của lương gross (tối đa theo vùng)
-    socialInsurance = salaryForInsurance * SOCIAL_INSURANCE_RATE
-    console.log(`Default BHXH calculation: ${salaryForInsurance} * ${SOCIAL_INSURANCE_RATE} = ${socialInsurance}`)
-  }
+  const socialHealthBase = Math.min(insuranceBase, MAX_SOCIAL_HEALTH_INSURANCE_SALARY)
+  const unemploymentBase = Math.min(insuranceBase, getMaxUnemploymentInsuranceSalary(region))
 
-  const healthInsurance = salaryForInsurance * HEALTH_INSURANCE_RATE
-  const unemploymentInsurance = salaryForInsurance * UNEMPLOYMENT_INSURANCE_RATE
-  const unionFee = hasUnion ? salaryForInsurance * (unionRate / 100) : 0
+  const socialInsurance = Math.round(socialHealthBase * SOCIAL_INSURANCE_RATE)
+  const healthInsurance = Math.round(socialHealthBase * HEALTH_INSURANCE_RATE)
+  const unemploymentInsurance = Math.round(unemploymentBase * UNEMPLOYMENT_INSURANCE_RATE)
+  const totalInsurance = socialInsurance + healthInsurance + unemploymentInsurance
 
-  // Calculate taxable income
-  const totalDeductions = socialInsurance + healthInsurance + unemploymentInsurance + unionFee
-  const totalAllowances = PERSONAL_DEDUCTION + dependents * DEPENDENT_DEDUCTION
-  const taxableIncome = Math.max(0, totalIncome - totalDeductions - totalAllowances)
+  const unionFee = hasUnion ? Math.round(Math.min(insuranceBase * UNION_FEE_RATE, MAX_UNION_FEE)) : 0
 
-  // Calculate personal income tax
-  const personalIncomeTax = calculateProgressiveTax(taxableIncome)
+  // Tiền làm thêm giờ được miễn thuế nên không cộng vào thu nhập chịu thuế.
+  // Đoàn phí công đoàn không phải khoản giảm trừ nên không trừ khi tính thuế.
+  const personalDeduction = PERSONAL_DEDUCTION
+  const dependentDeduction = Math.max(0, dependents) * DEPENDENT_DEDUCTION
+  const taxableIncome = Math.max(0, gross + allowanceAmount - totalInsurance - personalDeduction - dependentDeduction)
+  const personalIncomeTax = Math.round(calculateProgressiveTax(taxableIncome))
 
-  // Calculate net salary
-  const netSalary = totalIncome - totalDeductions - personalIncomeTax
+  const totalIncome = gross + allowanceAmount + overtimeAmount
+  const netSalary = totalIncome - totalInsurance - unionFee - personalIncomeTax
 
   return {
-    grossSalary,
-    netSalary,
+    grossSalary: gross,
+    allowanceAmount,
+    overtimeAmount,
+    totalIncome,
+    insuranceBase,
+    belowMinimumWage: insuranceBase > 0 && insuranceBase < minimumWage,
     socialInsurance,
     healthInsurance,
     unemploymentInsurance,
+    totalInsurance,
     unionFee,
+    personalDeduction,
+    dependentDeduction,
     taxableIncome,
     personalIncomeTax,
-    totalIncome,
+    netSalary,
   }
 }
 
 /**
- * Calculate gross salary from desired net salary
+ * Tìm lương GROSS nhỏ nhất (làm tròn đến đồng) để thực nhận đạt lương NET mong muốn.
+ * Lương NET mong muốn là tổng thực nhận, đã bao gồm phụ cấp và tiền làm thêm giờ.
  */
-export function calculateNetToGross(
-  targetNetSalary: number,
-  dependents: number,
-  region: string,
-  hasUnion = false,
-  unionRate = 1,
-  customBHXH = false,
-  bhxhBaseAmount = 0,
-  hasAllowance = false,
-  allowanceAmount = 0,
-  hasOvertime = false,
-  overtimeAmount = 0,
-): TaxCalculationResult {
-  // Adjust target net salary to account for allowances and overtime
-  const adjustedTargetNet = targetNetSalary - (hasAllowance ? allowanceAmount : 0) - (hasOvertime ? overtimeAmount : 0)
+export function calculateNetToGross(targetNetSalary: number, options: SalaryOptions): TaxCalculationResult {
+  const netAt = (gross: number) => calculateGrossToNet(gross, options).netSalary
 
-  // Use binary search to find the gross salary that results in the target net salary
-  let low = adjustedTargetNet
-  let high = adjustedTargetNet * 2 // Initial upper bound
-  let grossSalary = 0
-  let result: TaxCalculationResult | null = null
+  if (netAt(0) >= targetNetSalary) {
+    return calculateGrossToNet(0, options)
+  }
 
-  // Binary search with precision of 1000 VND
-  while (high - low > 1000) {
-    grossSalary = Math.floor((low + high) / 2)
-    const calculationResult = calculateGrossToNet(
-      grossSalary,
-      dependents,
-      region,
-      hasUnion,
-      unionRate,
-      customBHXH,
-      bhxhBaseAmount,
-      hasAllowance,
-      allowanceAmount,
-      hasOvertime,
-      overtimeAmount,
-    )
+  let low = 0
+  let high = Math.max(1_000_000, Math.ceil(targetNetSalary * 2))
+  while (netAt(high) < targetNetSalary) {
+    low = high
+    high *= 2
+  }
 
-    if (calculationResult.netSalary > targetNetSalary) {
-      high = grossSalary
+  // Lương NET tăng đơn điệu theo lương GROSS: tìm GROSS nhỏ nhất có NET >= mục tiêu
+  while (high - low > 1) {
+    const mid = Math.floor((low + high) / 2)
+    if (netAt(mid) >= targetNetSalary) {
+      high = mid
     } else {
-      low = grossSalary
-      result = calculationResult
+      low = mid
     }
   }
 
-  // If we didn't find a result (unlikely), calculate with the final gross salary
-  if (!result) {
-    result = calculateGrossToNet(
-      grossSalary,
-      dependents,
-      region,
-      hasUnion,
-      unionRate,
-      customBHXH,
-      bhxhBaseAmount,
-      hasAllowance,
-      allowanceAmount,
-      hasOvertime,
-      overtimeAmount,
-    )
-  }
-
-  // Adjust the result to match the target net salary exactly
-  return {
-    ...result,
-    netSalary: targetNetSalary,
-  }
+  return calculateGrossToNet(high, options)
 }
 
 /**
- * Calculate progressive income tax based on taxable income
+ * Thuế TNCN theo biểu thuế lũy tiến từng phần
  */
-function calculateProgressiveTax(taxableIncome: number): number {
-  let remainingIncome = taxableIncome
+export function calculateProgressiveTax(taxableIncome: number): number {
   let tax = 0
   let previousThreshold = 0
 
   for (const bracket of TAX_BRACKETS) {
-    const taxableAmountInBracket = Math.min(remainingIncome, bracket.threshold - previousThreshold)
-
-    if (taxableAmountInBracket <= 0) break
-
-    tax += taxableAmountInBracket * bracket.rate
-    remainingIncome -= taxableAmountInBracket
+    if (taxableIncome <= previousThreshold) break
+    tax += (Math.min(taxableIncome, bracket.threshold) - previousThreshold) * bracket.rate
     previousThreshold = bracket.threshold
-
-    if (remainingIncome <= 0) break
   }
 
   return tax
