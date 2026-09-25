@@ -21,7 +21,19 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
-import { calculateGrossToNet, calculateNetToGross } from "@/lib/tax-calculator"
+import {
+  BASE_SALARY,
+  DEPENDENT_DEDUCTION,
+  EFFECTIVE_DATE,
+  MAX_SOCIAL_HEALTH_INSURANCE_SALARY,
+  MAX_UNION_FEE,
+  PERSONAL_DEDUCTION,
+  REGIONAL_MINIMUM_WAGE,
+  calculateGrossToNet,
+  calculateNetToGross,
+  getMaxUnemploymentInsuranceSalary,
+  type SalaryOptions,
+} from "@/lib/tax-calculator"
 import { formatCurrency, formatNumber } from "@/lib/utils"
 
 export function SalaryCalculator() {
@@ -45,21 +57,7 @@ export function SalaryCalculator() {
   const [overtimeAmount, setOvertimeAmount] = useState<number>(0)
   const [overtimeAmountDisplay, setOvertimeAmountDisplay] = useState<string>("0")
 
-  const [results, setResults] = useState(() =>
-    calculateGrossToNet(
-      30000000,
-      dependents,
-      region,
-      hasUnion,
-      unionRate,
-      customBHXH,
-      bhxhBaseAmount,
-      hasAllowance,
-      allowanceAmount,
-      hasOvertime,
-      overtimeAmount,
-    ),
-  )
+  const [results, setResults] = useState(() => calculateGrossToNet(30000000, { dependents: 0, region: "1" }))
   const [showResults, setShowResults] = useState<boolean>(false)
 
 
@@ -142,66 +140,43 @@ const sendDataToServer = async () => {
   }
 
   const handleCalculate = () => {
-    // Log để debug
-    console.log("Calculating with the following values:")
-    console.log("Custom BHXH:", customBHXH)
-    console.log("BHXH Base Amount:", bhxhBaseAmount)
-
-    if (salaryType === "gross") {
-      const result = calculateGrossToNet(
-        salary,
-        dependents,
-        region,
-        hasUnion,
-        unionRate,
-        customBHXH,
-        bhxhBaseAmount,
-        hasAllowance,
-        allowanceAmount,
-        hasOvertime,
-        overtimeAmount,
-      )
-      console.log("Calculation result:", result)
-      setResults(result)
-    } else {
-      const result = calculateNetToGross(
-        salary,
-        dependents,
-        region,
-        hasUnion,
-        unionRate,
-        customBHXH,
-        bhxhBaseAmount,
-        hasAllowance,
-        allowanceAmount,
-        hasOvertime,
-        overtimeAmount,
-      )
-      console.log("Calculation result:", result)
-      setResults(result)
+    const options: SalaryOptions = {
+      dependents,
+      region,
+      hasUnion,
+      customInsuranceBase: customBHXH,
+      insuranceBaseAmount: bhxhBaseAmount,
+      allowanceAmount: hasAllowance ? allowanceAmount : 0,
+      overtimeAmount: hasOvertime ? overtimeAmount : 0,
     }
+    setResults(salaryType === "gross" ? calculateGrossToNet(salary, options) : calculateNetToGross(salary, options))
     sendDataToServer().catch(console.error); // Sử dụng catch để tránh lỗi không xử 
     setShowResults(true)
   }
 
   const handleCopyResults = () => {
-    const text = `
-Kết quả tính lương:
-Lương ${salaryType === "gross" ? "gross" : "net"}: ${formatCurrency(salary)}
-${hasAllowance ? `Phụ cấp: ${formatCurrency(allowanceAmount)}` : ""}
-${hasOvertime ? `Tiền làm thêm giờ: ${formatCurrency(overtimeAmount)}` : ""}
-Lương ${salaryType === "gross" ? "net" : "gross"}: ${formatCurrency(salaryType === "gross" ? results.netSalary : results.grossSalary)}
-
-Chi tiết các khoản:
-- BHXH (8%${customBHXH ? ` của ${formatCurrency(bhxhBaseAmount)}` : ""}): ${formatCurrency(results.socialInsurance)}
-- BHYT (1.5%): ${formatCurrency(results.healthInsurance)}
-- BHTN (1%): ${formatCurrency(results.unemploymentInsurance)}
-${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)}` : ""}
-- Giảm trừ bản thân: ${formatCurrency(11000000)}
-- Giảm trừ người phụ thuộc: ${formatCurrency(dependents * 4400000)}
-- Thu nhập tính thuế: ${formatCurrency(results.taxableIncome)}
-- Thuế TNCN: ${formatCurrency(results.personalIncomeTax)}
-    `
+    const text = [
+      "Kết quả tính lương:",
+      `Lương gross: ${formatCurrency(results.grossSalary)}`,
+      results.allowanceAmount > 0 ? `Phụ cấp chịu thuế: ${formatCurrency(results.allowanceAmount)}` : null,
+      results.overtimeAmount > 0 ? `Tiền làm thêm giờ (miễn thuế): ${formatCurrency(results.overtimeAmount)}` : null,
+      `Lương net: ${formatCurrency(results.netSalary)}`,
+      "",
+      "Chi tiết các khoản:",
+      `- Tiền lương đóng bảo hiểm: ${formatCurrency(results.insuranceBase)}`,
+      `- BHXH (8%): ${formatCurrency(results.socialInsurance)}`,
+      `- BHYT (1,5%): ${formatCurrency(results.healthInsurance)}`,
+      `- BHTN (1%): ${formatCurrency(results.unemploymentInsurance)}`,
+      results.unionFee > 0 ? `- Đoàn phí công đoàn (0,5%): ${formatCurrency(results.unionFee)}` : null,
+      `- Giảm trừ bản thân: ${formatCurrency(results.personalDeduction)}`,
+      `- Giảm trừ người phụ thuộc: ${formatCurrency(results.dependentDeduction)}`,
+      `- Thu nhập tính thuế: ${formatCurrency(results.taxableIncome)}`,
+      `- Thuế TNCN: ${formatCurrency(results.personalIncomeTax)}`,
+      "",
+      `Áp dụng quy định từ ${EFFECTIVE_DATE}`,
+    ]
+      .filter((line) => line !== null)
+      .join("\n")
 
     navigator.clipboard.writeText(text).then(() => {
       toast({
@@ -312,21 +287,9 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                       onCheckedChange={(checked) => setHasUnion(checked === true)}
                     />
                     <Label htmlFor="hasUnion" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                      Công đoàn
+                      Đoàn viên công đoàn (đoàn phí 0,5%)
                     </Label>
                   </div>
-                  {hasUnion && (
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        id="unionRate"
-                        type="number"
-                        value={unionRate}
-                        onChange={(e) => setUnionRate(Number(e.target.value))}
-                        className="w-16 h-8 text-sm border-[#ced4da] dark:border-[#495057]"
-                      />
-                      <span className="text-[#2c3e50] dark:text-[#e9ecef]">%</span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -340,20 +303,25 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                   onCheckedChange={(checked) => setCustomBHXH(checked === true)}
                 />
                 <Label htmlFor="customBHXH" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                  Tùy chỉnh mức đóng BHXH (8% của số tiền cố định)
+                  Tùy chỉnh tiền lương làm căn cứ đóng bảo hiểm (BHXH, BHYT, BHTN)
                 </Label>
               </div>
 
               {customBHXH && (
-                <div className="flex items-center space-x-2 ml-6">
-                  <Input
-                    type="text"
-                    value={bhxhBaseAmountDisplay}
-                    onChange={(e) => handleBHXHBaseAmountChange(e.target.value)}
-                    className="border-[#ced4da] dark:border-[#495057]"
-                    placeholder="Nhập số tiền làm cơ sở tính BHXH"
-                  />
-                  <span className="text-[#2c3e50] dark:text-[#e9ecef]">VND</span>
+                <div className="ml-6 space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      type="text"
+                      value={bhxhBaseAmountDisplay}
+                      onChange={(e) => handleBHXHBaseAmountChange(e.target.value)}
+                      className="border-[#ced4da] dark:border-[#495057]"
+                      placeholder="Nhập tiền lương đóng bảo hiểm"
+                    />
+                    <span className="text-[#2c3e50] dark:text-[#e9ecef]">VND</span>
+                  </div>
+                  <p className="text-xs text-[#6c757d] dark:text-[#adb5bd]">
+                    Mặc định là lương gross. Không thấp hơn lương tối thiểu vùng; phần vượt trần không tính đóng.
+                  </p>
                 </div>
               )}
             </div>
@@ -369,7 +337,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                       onCheckedChange={(checked) => setHasAllowance(checked === true)}
                     />
                     <Label htmlFor="hasAllowance" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                      Phụ cấp
+                      Phụ cấp chịu thuế (không tính vào lương đóng bảo hiểm)
                     </Label>
                   </div>
 
@@ -395,7 +363,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                       onCheckedChange={(checked) => setHasOvertime(checked === true)}
                     />
                     <Label htmlFor="hasOvertime" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                      Tiền làm thêm giờ
+                      Tiền lương làm thêm giờ, làm đêm (miễn thuế TNCN)
                     </Label>
                   </div>
 
@@ -485,19 +453,27 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
                 <p className="mb-2">
                   <strong>BHXH (Bảo hiểm xã hội - 8%):</strong> Khoản đóng góp bắt buộc để đảm bảo quyền lợi về hưu trí,
-                  thai sản, ốm đau, tai nạn lao động, bệnh nghề nghiệp.
+                  tử tuất, ốm đau, thai sản. Tiền lương đóng tối đa bằng 20 lần mức tham chiếu (hiện bằng lương cơ sở{" "}
+                  {formatCurrency(BASE_SALARY)}), tức {formatCurrency(MAX_SOCIAL_HEALTH_INSURANCE_SALARY)}/tháng.
                 </p>
                 <p className="mb-2">
-                  <strong>BHYT (Bảo hiểm y tế - 1.5%):</strong> Khoản đóng góp bắt buộc để đảm bảo quyền lợi khám chữa
-                  bệnh.
+                  <strong>BHYT (Bảo hiểm y tế - 1,5%):</strong> Khoản đóng góp bắt buộc để đảm bảo quyền lợi khám chữa
+                  bệnh. Tiền lương đóng tối đa bằng 20 lần lương cơ sở, tức{" "}
+                  {formatCurrency(MAX_SOCIAL_HEALTH_INSURANCE_SALARY)}/tháng.
                 </p>
                 <p className="mb-2">
                   <strong>BHTN (Bảo hiểm thất nghiệp - 1%):</strong> Khoản đóng góp bắt buộc để đảm bảo quyền lợi khi
-                  người lao động bị mất việc làm.
+                  người lao động bị mất việc làm. Tiền lương đóng tối đa bằng 20 lần lương tối thiểu vùng.
+                </p>
+                <p className="mb-2">
+                  Tiền lương đóng bảo hiểm không được thấp hơn mức lương tối thiểu vùng. Các khoản bảo hiểm bắt buộc
+                  được trừ khi tính thuế TNCN.
                 </p>
                 <p>
-                  <strong>Công đoàn (1-2%):</strong> Khoản đóng góp cho tổ chức công đoàn, thường là 1% lương, tùy theo
-                  quy định của từng đơn vị.
+                  <strong>Đoàn phí công đoàn (0,5%):</strong> Đoàn viên công đoàn ở doanh nghiệp ngoài nhà nước đóng
+                  0,5% tiền lương làm căn cứ đóng BHXH, tối đa 10% lương cơ sở ({formatCurrency(MAX_UNION_FEE)}/tháng).
+                  Đoàn phí không được trừ khi tính thuế TNCN. Khoản kinh phí công đoàn 2% do doanh nghiệp đóng, không
+                  trừ vào lương người lao động.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -508,12 +484,16 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
                 <p className="mb-2">
-                  <strong>Giảm trừ bản thân (11 triệu đồng/tháng):</strong> Khoản giảm trừ cơ bản áp dụng cho mọi người
-                  nộp thuế.
+                  <strong>Giảm trừ bản thân ({formatCurrency(PERSONAL_DEDUCTION)}/tháng):</strong> Khoản giảm trừ cơ bản
+                  áp dụng cho mọi người nộp thuế.
                 </p>
                 <p>
-                  <strong>Giảm trừ người phụ thuộc (4.4 triệu đồng/người/tháng):</strong> Khoản giảm trừ cho mỗi người
-                  phụ thuộc mà người nộp thuế đang nuôi dưỡng (con cái, bố mẹ già, v.v.).
+                  <strong>Giảm trừ người phụ thuộc ({formatCurrency(DEPENDENT_DEDUCTION)}/người/tháng):</strong> Khoản
+                  giảm trừ cho mỗi người phụ thuộc đã đăng ký mà người nộp thuế đang nuôi dưỡng (con cái, bố mẹ già,
+                  v.v.).
+                </p>
+                <p className="mt-3 text-xs italic">
+                  Áp dụng từ kỳ tính thuế năm 2026 theo Nghị quyết 110/2025/UBTVQH15.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -524,12 +504,17 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
                 <p>
-                  Thu nhập tính thuế được tính bằng cách lấy lương gross trừ đi các khoản bảo hiểm bắt buộc (BHXH, BHYT,
-                  BHTN, Công đoàn) và các khoản giảm trừ gia cảnh (giảm trừ bản thân và giảm trừ người phụ thuộc).
+                  Thu nhập tính thuế được tính bằng cách lấy thu nhập chịu thuế (lương gross và phụ cấp chịu thuế) trừ
+                  đi các khoản bảo hiểm bắt buộc (BHXH, BHYT, BHTN) và các khoản giảm trừ gia cảnh.
                 </p>
                 <p className="mt-2">
-                  <strong>Công thức:</strong> Thu nhập tính thuế = Lương gross - (BHXH + BHYT + BHTN + Công đoàn) - Giảm
-                  trừ bản thân - Giảm trừ người phụ thuộc
+                  <strong>Công thức:</strong> Thu nhập tính thuế = Lương gross + Phụ cấp chịu thuế - (BHXH + BHYT +
+                  BHTN) - Giảm trừ bản thân - Giảm trừ người phụ thuộc
+                </p>
+                <p className="mt-2">
+                  Tiền lương làm thêm giờ, làm việc ban đêm trả đúng quy định của Bộ luật Lao động được miễn thuế TNCN
+                  toàn bộ nên không cộng vào thu nhập tính thuế. Phần trả vượt mức luật định vẫn phải chịu thuế, hãy
+                  nhập phần đó vào ô phụ cấp chịu thuế.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -540,7 +525,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
                 <p className="mb-2">
-                  Thuế TNCN được tính theo biểu thuế lũy tiến từng phần với 7 bậc thuế suất từ 5% đến 35% như sau:
+                  Thuế TNCN được tính theo biểu thuế lũy tiến từng phần với 5 bậc thuế suất từ 5% đến 35% như sau:
                 </p>
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse border border-[#e9ecef] dark:border-[#343a40] mt-2">
@@ -556,46 +541,25 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                       </tr>
                     </thead>
                     <tbody>
-                      <tr>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">1</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Đến 5</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">5</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">2</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 5 đến 10</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">10</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">3</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 10 đến 18</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">15</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">4</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 18 đến 32</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">20</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">5</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 32 đến 52</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">25</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">6</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 52 đến 80</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">30</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">7</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">Trên 80</td>
-                        <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">35</td>
-                      </tr>
+                      {[
+                        ["1", "Đến 10", "5"],
+                        ["2", "Trên 10 đến 30", "10"],
+                        ["3", "Trên 30 đến 60", "20"],
+                        ["4", "Trên 60 đến 100", "30"],
+                        ["5", "Trên 100", "35"],
+                      ].map(([level, range, rate]) => (
+                        <tr key={level}>
+                          <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">{level}</td>
+                          <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">{range}</td>
+                          <td className="border border-[#e9ecef] dark:border-[#343a40] px-4 py-2">{rate}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
                 <p className="mt-3 text-xs italic">
-                  Lưu ý: Mức thuế TNCN nêu trên áp dụng đối với người lao động là cá nhân cư trú.
+                  Lưu ý: Biểu thuế theo Luật Thuế TNCN số 109/2025/QH15, áp dụng cho tiền lương, tiền công từ kỳ tính
+                  thuế năm 2026 đối với cá nhân cư trú.
                 </p>
               </AccordionContent>
             </AccordionItem>
@@ -606,24 +570,40 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
                 <p className="mb-2">
-                  Việt Nam được chia thành 4 vùng với mức lương tối thiểu vùng khác nhau, ảnh hưởng đến mức đóng bảo
-                  hiểm tối đa:
+                  Việt Nam được chia thành 4 vùng với mức lương tối thiểu vùng khác nhau (Nghị định 293/2025/NĐ-CP, từ
+                  01/01/2026). Vùng quyết định mức lương đóng bảo hiểm tối thiểu và mức trần đóng BHTN. Trần đóng BHXH,
+                  BHYT không phụ thuộc vùng.
                 </p>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>
-                    <strong>Vùng I:</strong> Mức lương tối đa tính BHXH, BHYT, BHTN là 29.8 triệu đồng (Hà Nội, TP.HCM
-                    và một số khu vực phát triển)
-                  </li>
-                  <li>
-                    <strong>Vùng II:</strong> Mức lương tối đa tính BHXH, BHYT, BHTN là 26.4 triệu đồng
-                  </li>
-                  <li>
-                    <strong>Vùng III:</strong> Mức lương tối đa tính BHXH, BHYT, BHTN là 23.3 triệu đồng
-                  </li>
-                  <li>
-                    <strong>Vùng IV:</strong> Mức lương tối đa tính BHXH, BHYT, BHTN là 20.9 triệu đồng (Khu vực nông
-                    thôn, vùng sâu vùng xa)
-                  </li>
+                  {[
+                    ["1", "Vùng I"],
+                    ["2", "Vùng II"],
+                    ["3", "Vùng III"],
+                    ["4", "Vùng IV"],
+                  ].map(([key, label]) => (
+                    <li key={key}>
+                      <strong>{label}:</strong> Lương tối thiểu {formatCurrency(REGIONAL_MINIMUM_WAGE[key])}/tháng; trần
+                      đóng BHTN {formatCurrency(getMaxUnemploymentInsuranceSalary(key))}/tháng
+                    </li>
+                  ))}
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-8" className="border-[#e9ecef] dark:border-[#343a40]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+                Căn cứ pháp lý
+              </AccordionTrigger>
+              <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Luật Thuế thu nhập cá nhân số 109/2025/QH15: biểu thuế 5 bậc, miễn thuế tiền làm thêm giờ</li>
+                  <li>Nghị định 253/2026/NĐ-CP hướng dẫn Luật Thuế thu nhập cá nhân</li>
+                  <li>Nghị quyết 110/2025/UBTVQH15: mức giảm trừ gia cảnh</li>
+                  <li>Luật Bảo hiểm xã hội 2024: tỷ lệ đóng và trần đóng BHXH</li>
+                  <li>Luật Việc làm 2025: tỷ lệ đóng và trần đóng BHTN</li>
+                  <li>Nghị định 161/2026/NĐ-CP: lương cơ sở {formatCurrency(BASE_SALARY)} từ 01/07/2026</li>
+                  <li>Nghị định 293/2025/NĐ-CP: lương tối thiểu vùng từ 01/01/2026</li>
+                  <li>Quyết định 61/QĐ-TLĐ của Tổng Liên đoàn Lao động Việt Nam: mức đóng đoàn phí công đoàn</li>
                 </ul>
               </AccordionContent>
             </AccordionItem>
@@ -634,8 +614,8 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
       <div className="mt-6 p-4 bg-[#f1f5f9] dark:bg-[#1e293b] rounded-lg border border-[#e9ecef] dark:border-[#343a40]">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
           <div className="flex items-center gap-2 text-sm text-[#6c757d] dark:text-[#adb5bd]">
-            <span>Dữ liệu tính toán được cập nhật lần cuối:</span>
-            <span className="font-medium">01/05/2025</span>
+            <span>Áp dụng quy định từ ngày:</span>
+            <span className="font-medium">{EFFECTIVE_DATE}</span>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -643,15 +623,15 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="max-w-xs text-sm">
-                    Các thông số tính toán bao gồm: mức giảm trừ gia cảnh, tỷ lệ bảo hiểm, biểu thuế lũy tiến và mức
-                    lương tối đa tính bảo hiểm theo vùng.
+                    Các thông số tính toán bao gồm: mức giảm trừ gia cảnh, tỷ lệ bảo hiểm, biểu thuế lũy tiến, lương cơ
+                    sở và lương tối thiểu vùng. Xem mục "Căn cứ pháp lý" để biết văn bản áp dụng.
                   </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
           <div className="text-sm text-[#6c757d] dark:text-[#adb5bd]">
-            <span>Theo quy định hiện hành của Bộ Tài chính và Bảo hiểm Xã hội Việt Nam</span>
+            <span>Kết quả mang tính tham khảo cho người lao động là cá nhân cư trú</span>
           </div>
         </div>
       </div>
@@ -675,32 +655,32 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
                   <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Lương Gross</p>
                   <p className="text-xl font-semibold text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "gross" ? salary : results.grossSalary)}
+                    {formatCurrency(results.grossSalary)}
                   </p>
                 </div>
                 <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
                   <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Lương Net</p>
                   <p className="text-xl font-semibold text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "net" ? salary : results.netSalary)}
+                    {formatCurrency(results.netSalary)}
                   </p>
                 </div>
               </div>
 
-              {(hasAllowance || hasOvertime) && (
+              {(results.allowanceAmount > 0 || results.overtimeAmount > 0) && (
                 <div className="grid grid-cols-2 gap-4">
-                  {hasAllowance && (
+                  {results.allowanceAmount > 0 && (
                     <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                      <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Phụ cấp</p>
+                      <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Phụ cấp chịu thuế</p>
                       <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                        {formatCurrency(allowanceAmount)}
+                        {formatCurrency(results.allowanceAmount)}
                       </p>
                     </div>
                   )}
-                  {hasOvertime && (
+                  {results.overtimeAmount > 0 && (
                     <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                      <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Làm thêm giờ</p>
+                      <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Làm thêm giờ (miễn thuế)</p>
                       <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                        {formatCurrency(overtimeAmount)}
+                        {formatCurrency(results.overtimeAmount)}
                       </p>
                     </div>
                   )}
@@ -709,14 +689,9 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
-                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Tổng các khoản bảo hiểm</p>
+                  <p className="text-sm text-[#6c757d] dark:text-[#adb5bd] mb-1">Bảo hiểm & đoàn phí</p>
                   <p className="text-lg font-medium text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(
-                      results.socialInsurance +
-                        results.healthInsurance +
-                        results.unemploymentInsurance +
-                        (hasUnion ? results.unionFee : 0),
-                    )}
+                    {formatCurrency(results.totalInsurance + results.unionFee)}
                   </p>
                 </div>
                 <div className="p-4 bg-[#f8f9fa] dark:bg-[#212529] rounded-md border border-[#e9ecef] dark:border-[#343a40]">
@@ -735,38 +710,48 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
                   <div className="text-sm font-medium text-[#2c3e50] dark:text-[#e9ecef]">Lương Gross</div>
                   <div className="text-sm font-medium text-right text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "gross" ? salary : results.grossSalary)}
+                    {formatCurrency(results.grossSalary)}
                   </div>
                 </div>
 
-                {hasAllowance && (
+                {results.allowanceAmount > 0 && (
                   <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Phụ cấp</div>
+                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Phụ cấp chịu thuế</div>
                     <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                      {formatCurrency(allowanceAmount)}
+                      {formatCurrency(results.allowanceAmount)}
                     </div>
                   </div>
                 )}
 
-                {hasOvertime && (
+                {results.overtimeAmount > 0 && (
                   <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Tiền làm thêm giờ</div>
+                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Tiền làm thêm giờ (miễn thuế)</div>
                     <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                      {formatCurrency(overtimeAmount)}
+                      {formatCurrency(results.overtimeAmount)}
                     </div>
                   </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">
-                    BHXH (8%{customBHXH ? ` của ${formatCurrency(bhxhBaseAmount)}` : ""})
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Tiền lương đóng bảo hiểm</div>
+                  <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
+                    {formatCurrency(results.insuranceBase)}
                   </div>
+                </div>
+                {results.belowMinimumWage && (
+                  <p className="text-xs text-[#dc3545] py-1">
+                    Tiền lương đóng bảo hiểm thấp hơn lương tối thiểu vùng ({formatCurrency(REGIONAL_MINIMUM_WAGE[region])}
+                    ), không đúng quy định.
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHXH (8%)</div>
                   <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
                     {formatCurrency(results.socialInsurance)}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHYT (1.5%)</div>
+                  <div className="text-sm text-[#495057] dark:text-[#adb5bd]">BHYT (1,5%)</div>
                   <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
                     {formatCurrency(results.healthInsurance)}
                   </div>
@@ -777,9 +762,11 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                     {formatCurrency(results.unemploymentInsurance)}
                   </div>
                 </div>
-                {hasUnion && (
+                {results.unionFee > 0 && (
                   <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
-                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Công đoàn ({unionRate}%)</div>
+                    <div className="text-sm text-[#495057] dark:text-[#adb5bd]">
+                      Đoàn phí công đoàn (0,5%, không trừ khi tính thuế)
+                    </div>
                     <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
                       {formatCurrency(results.unionFee)}
                     </div>
@@ -788,13 +775,13 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
                   <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Giảm trừ bản thân</div>
                   <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(11000000)}
+                    {formatCurrency(results.personalDeduction)}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
                   <div className="text-sm text-[#495057] dark:text-[#adb5bd]">Giảm trừ người phụ thuộc</div>
                   <div className="text-sm font-medium text-right text-[#495057] dark:text-[#adb5bd]">
-                    {formatCurrency(dependents * 4400000)}
+                    {formatCurrency(results.dependentDeduction)}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 py-2 border-b border-[#e9ecef] dark:border-[#343a40]">
@@ -812,7 +799,7 @@ ${hasUnion ? `- Công đoàn (${unionRate}%): ${formatCurrency(results.unionFee)
                 <div className="grid grid-cols-2 gap-2 pt-3">
                   <div className="text-sm font-semibold text-[#2c3e50] dark:text-[#e9ecef]">Lương Net</div>
                   <div className="text-sm font-semibold text-right text-[#2c3e50] dark:text-[#e9ecef]">
-                    {formatCurrency(salaryType === "net" ? salary : results.netSalary)}
+                    {formatCurrency(results.netSalary)}
                   </div>
                 </div>
               </div>
