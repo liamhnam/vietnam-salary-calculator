@@ -19,7 +19,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import {
   BASE_SALARY,
@@ -40,7 +39,7 @@ export function SalaryCalculator() {
   const { toast } = useToast()
   const [salaryType, setSalaryType] = useState<"gross" | "net">("gross")
   const [salary, setSalary] = useState<number>(30000000)
-  const [salaryDisplay, setSalaryDisplay] = useState<string>("30,000,000")
+  const [salaryDisplay, setSalaryDisplay] = useState<string>(formatNumber(30000000))
   const [dependents, setDependents] = useState<number>(0)
   const [region, setRegion] = useState<string>("1")
   const [hasUnion, setHasUnion] = useState<boolean>(false)
@@ -178,12 +177,21 @@ const sendDataToServer = async () => {
       .filter((line) => line !== null)
       .join("\n")
 
-    navigator.clipboard.writeText(text).then(() => {
-      toast({
-        title: "Đã sao chép kết quả",
-        description: "Kết quả tính lương đã được sao chép vào clipboard",
-      })
-    })
+    navigator.clipboard.writeText(text).then(
+      () => {
+        toast({
+          title: "Đã sao chép kết quả",
+          description: "Kết quả tính lương đã được sao chép vào bộ nhớ tạm",
+        })
+      },
+      () => {
+        toast({
+          variant: "destructive",
+          title: "Không thể sao chép",
+          description: "Trình duyệt không cho phép truy cập bộ nhớ tạm",
+        })
+      },
+    )
   }
 
   return (
@@ -199,7 +207,13 @@ const sendDataToServer = async () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-5">
-          <div className="space-y-5">
+          <form
+            className="space-y-5"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (salary > 0) handleCalculate()
+            }}
+          >
             <div className="p-3 bg-[#f1f5f9] dark:bg-[#1e293b] rounded-md">
               <RadioGroup
                 defaultValue="gross"
@@ -209,13 +223,13 @@ const sendDataToServer = async () => {
               >
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="gross" id="gross" />
-                  <Label htmlFor="gross" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                  <Label htmlFor="gross" className="font-medium leading-snug text-[#2c3e50] dark:text-[#e9ecef]">
                     Lương Gross
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="net" id="net" />
-                  <Label htmlFor="net" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                  <Label htmlFor="net" className="font-medium leading-snug text-[#2c3e50] dark:text-[#e9ecef]">
                     Lương Net
                   </Label>
                 </div>
@@ -230,6 +244,7 @@ const sendDataToServer = async () => {
                 <Input
                   id="salary"
                   type="text"
+                  inputMode="numeric"
                   value={salaryDisplay}
                   onChange={(e) => handleSalaryChange(e.target.value)}
                   placeholder="Nhập lương"
@@ -251,7 +266,7 @@ const sendDataToServer = async () => {
                   <SelectContent>
                     {Array.from({ length: 11 }, (_, i) => (
                       <SelectItem key={i} value={i.toString()}>
-                        {i}
+                        {i === 0 ? "Không có" : `${i} người`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -286,7 +301,7 @@ const sendDataToServer = async () => {
                       checked={hasUnion}
                       onCheckedChange={(checked) => setHasUnion(checked === true)}
                     />
-                    <Label htmlFor="hasUnion" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                    <Label htmlFor="hasUnion" className="font-medium leading-snug text-[#2c3e50] dark:text-[#e9ecef]">
                       Đoàn viên công đoàn (đoàn phí 0,5%)
                     </Label>
                   </div>
@@ -296,13 +311,13 @@ const sendDataToServer = async () => {
 
             {/* Phần BHXH tùy chỉnh */}
             <div className="p-3 bg-[#f1f5f9] dark:bg-[#1e293b] rounded-md">
-              <div className="flex items-center space-x-2 mb-3">
+              <div className={`flex items-center space-x-2 ${customBHXH ? "mb-3" : ""}`}>
                 <Checkbox
                   id="customBHXH"
                   checked={customBHXH}
                   onCheckedChange={(checked) => setCustomBHXH(checked === true)}
                 />
-                <Label htmlFor="customBHXH" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                <Label htmlFor="customBHXH" className="font-medium leading-snug text-[#2c3e50] dark:text-[#e9ecef]">
                   Tùy chỉnh tiền lương làm căn cứ đóng bảo hiểm (BHXH, BHYT, BHTN)
                 </Label>
               </div>
@@ -312,6 +327,7 @@ const sendDataToServer = async () => {
                   <div className="flex items-center space-x-2">
                     <Input
                       type="text"
+                      inputMode="numeric"
                       value={bhxhBaseAmountDisplay}
                       onChange={(e) => handleBHXHBaseAmountChange(e.target.value)}
                       className="border-[#ced4da] dark:border-[#495057]"
@@ -336,7 +352,7 @@ const sendDataToServer = async () => {
                       checked={hasAllowance}
                       onCheckedChange={(checked) => setHasAllowance(checked === true)}
                     />
-                    <Label htmlFor="hasAllowance" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                    <Label htmlFor="hasAllowance" className="font-medium leading-snug text-[#2c3e50] dark:text-[#e9ecef]">
                       Phụ cấp chịu thuế (không tính vào lương đóng bảo hiểm)
                     </Label>
                   </div>
@@ -345,6 +361,7 @@ const sendDataToServer = async () => {
                     <div className="flex items-center space-x-2 ml-6">
                       <Input
                         type="text"
+                        inputMode="numeric"
                         value={allowanceAmountDisplay}
                         onChange={(e) => handleAllowanceAmountChange(e.target.value)}
                         className="border-[#ced4da] dark:border-[#495057]"
@@ -362,7 +379,7 @@ const sendDataToServer = async () => {
                       checked={hasOvertime}
                       onCheckedChange={(checked) => setHasOvertime(checked === true)}
                     />
-                    <Label htmlFor="hasOvertime" className="font-medium text-[#2c3e50] dark:text-[#e9ecef]">
+                    <Label htmlFor="hasOvertime" className="font-medium leading-snug text-[#2c3e50] dark:text-[#e9ecef]">
                       Tiền lương làm thêm giờ, làm đêm (miễn thuế TNCN)
                     </Label>
                   </div>
@@ -371,6 +388,7 @@ const sendDataToServer = async () => {
                     <div className="flex items-center space-x-2 ml-6">
                       <Input
                         type="text"
+                        inputMode="numeric"
                         value={overtimeAmountDisplay}
                         onChange={(e) => handleOvertimeAmountChange(e.target.value)}
                         className="border-[#ced4da] dark:border-[#495057]"
@@ -385,13 +403,19 @@ const sendDataToServer = async () => {
 
             <div className="pt-2">
               <Button
-                onClick={handleCalculate}
-                className="w-full bg-[#0d6efd] hover:bg-[#0b5ed7] dark:bg-[#3b82f6] dark:hover:bg-[#2563eb]"
+                type="submit"
+                disabled={salary <= 0}
+                className="w-full text-white bg-[#0d6efd] hover:bg-[#0b5ed7] dark:bg-[#2563eb] dark:hover:bg-[#1d4ed8]"
               >
                 Tính toán
               </Button>
+              {salary <= 0 && (
+                <p className="mt-2 text-center text-xs text-[#6c757d] dark:text-[#adb5bd]">
+                  Nhập mức lương {salaryType === "gross" ? "Gross" : "Net"} để tính toán
+                </p>
+              )}
             </div>
-          </div>
+          </form>
         </CardContent>
       </Card>
 
@@ -410,15 +434,14 @@ const sendDataToServer = async () => {
         <CardContent className="pt-5">
           <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="item-1" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Thuế thu nhập cá nhân là gì?
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
                 <p className="mb-2">
-                  Đóng thuế thu nhập cá nhân là việc một cá nhân nào đó phải thực hiện trích một khoản lương hoặc một
-                  khoản thu nhập nào khác nộp vào ngân sách nhà nước. Trong đó Thuế TNCN là một loại thuế trực thu, được
-                  đánh vào một số cá nhân có thu nhập cao và mức chịu thuế này sẽ do pháp luật quy định một cách rõ
-                  ràng.
+                  Thuế thu nhập cá nhân (TNCN) là loại thuế trực thu, đánh trên thu nhập chịu thuế của cá nhân, trong đó
+                  có tiền lương, tiền công. Với tiền lương, thuế chỉ phát sinh khi thu nhập còn lại sau khi trừ bảo hiểm
+                  bắt buộc và giảm trừ gia cảnh lớn hơn 0.
                 </p>
                 <p className="mt-2">
                   <strong>Đối tượng nộp thuế:</strong>
@@ -431,7 +454,7 @@ const sendDataToServer = async () => {
             </AccordionItem>
 
             <AccordionItem value="item-2" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Lương Gross và Lương Net
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -447,7 +470,7 @@ const sendDataToServer = async () => {
             </AccordionItem>
 
             <AccordionItem value="item-3" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Các khoản bảo hiểm bắt buộc
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -479,7 +502,7 @@ const sendDataToServer = async () => {
             </AccordionItem>
 
             <AccordionItem value="item-4" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Giảm trừ gia cảnh
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -499,7 +522,7 @@ const sendDataToServer = async () => {
             </AccordionItem>
 
             <AccordionItem value="item-5" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Thu nhập tính thuế
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -520,7 +543,7 @@ const sendDataToServer = async () => {
             </AccordionItem>
 
             <AccordionItem value="item-6" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Thuế TNCN (Thuế thu nhập cá nhân)
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -565,7 +588,7 @@ const sendDataToServer = async () => {
             </AccordionItem>
 
             <AccordionItem value="item-7" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Khu vực (Vùng)
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -591,7 +614,7 @@ const sendDataToServer = async () => {
             </AccordionItem>
 
             <AccordionItem value="item-8" className="border-[#e9ecef] dark:border-[#343a40]">
-              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
+              <AccordionTrigger className="text-[#2c3e50] dark:text-[#e9ecef] font-medium text-left py-3 hover:no-underline hover:text-[#0d6efd] dark:hover:text-[#3b82f6]">
                 Căn cứ pháp lý
               </AccordionTrigger>
               <AccordionContent className="text-[#495057] dark:text-[#adb5bd]">
@@ -610,31 +633,6 @@ const sendDataToServer = async () => {
           </Accordion>
         </CardContent>
       </Card>
-
-      <div className="mt-6 p-4 bg-[#f1f5f9] dark:bg-[#1e293b] rounded-lg border border-[#e9ecef] dark:border-[#343a40]">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm text-[#6c757d] dark:text-[#adb5bd]">
-            <span>Áp dụng quy định từ ngày:</span>
-            <span className="font-medium">{EFFECTIVE_DATE}</span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <InfoIcon className="h-4 w-4 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="max-w-xs text-sm">
-                    Các thông số tính toán bao gồm: mức giảm trừ gia cảnh, tỷ lệ bảo hiểm, biểu thuế lũy tiến, lương cơ
-                    sở và lương tối thiểu vùng. Xem mục "Căn cứ pháp lý" để biết văn bản áp dụng.
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <div className="text-sm text-[#6c757d] dark:text-[#adb5bd]">
-            <span>Kết quả mang tính tham khảo cho người lao động là cá nhân cư trú</span>
-          </div>
-        </div>
-      </div>
 
       {/* Modal hiển thị kết quả */}
       <Dialog open={showResults} onOpenChange={setShowResults}>
@@ -812,7 +810,7 @@ const sendDataToServer = async () => {
             </Button>
             <Button
               onClick={handleCopyResults}
-              className="bg-[#0d6efd] hover:bg-[#0b5ed7] dark:bg-[#3b82f6] dark:hover:bg-[#2563eb]"
+              className="text-white bg-[#0d6efd] hover:bg-[#0b5ed7] dark:bg-[#2563eb] dark:hover:bg-[#1d4ed8]"
             >
               <Copy className="h-4 w-4 mr-2" />
               Sao chép kết quả
